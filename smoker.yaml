@@ -75,8 +75,63 @@ switch:
     name: "Igniter"
     id: igniter
 
+button:
+  - platform: template
+    name: "Start Smoker"
+    id: start_button
+    icon: "mdi:fire"
+    on_press:
+      - script.execute: startup_sequence
+
+  - platform: template
+    name: "Stop Smoker"
+    id: stop_button
+    icon: "mdi:fire-off"
+    on_press:
+      - script.execute: shutdown_sequence
+
+script:
+  - id: startup_sequence
+    mode: restart
+    then:
+      - logger.log: "Starting Smoker..."
+      - switch.turn_on: combustion_fan
+      - switch.turn_on: igniter
+      - output.set_level:
+          id: auger_pwm
+          level: 100%
+      - wait_until:
+          condition:
+            sensor.in_range:
+              id: grill_temperature_sensor
+              above: 130
+          timeout: 15min
+      - logger.log: "Startup complete, switching to PID control."
+      - switch.turn_off: igniter
+      - climate.control:
+          id: grill_controller
+          mode: HEAT
+
+  - id: shutdown_sequence
+    mode: restart
+    then:
+      - logger.log: "Shutting down smoker..."
+      - script.stop: startup_sequence
+      - climate.control:
+          id: grill_controller
+          mode: "OFF"
+      - output.set_level:
+          id: auger_pwm
+          level: 0%
+      - switch.turn_off: igniter
+      - switch.turn_on: combustion_fan
+      - delay: 10min
+      - switch.turn_off: combustion_fan
+      - logger.log: "Shutdown complete."
+
 climate:
   - platform: pid
+    id: grill_controller
     name: "Grill Controller"
     sensor: grill_temperature_sensor
     default_target_temperature: 225°F
