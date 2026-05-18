@@ -1,0 +1,6 @@
+services:
+  esphome:
+    image: esphome/esphome:latest
+    volumes:
+      - .:/config
+    command: compile smoker.yaml

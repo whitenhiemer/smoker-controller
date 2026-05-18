@@ -1,0 +1,87 @@
+esphome:
+  name: smoker-controller
+  friendly_name: Smoker Controller
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Hardware Mapping
+# Auger: GPIO14 (via Slow PWM)
+# Fan: GPIO27
+# Igniter: GPIO26
+# MAX6675 SPI: CLK=GPIO18, CS=GPIO5, MISO=GPIO19
+
+api:
+  encryption:
+    key: "g8RBaunZo1mGr7YCOwccV8ebL6eTNps1VFIS3BvHGC4="
+
+ota:
+  - platform: esphome
+
+logger:
+
+wifi:
+  ap:
+    ssid: "Smoker Fallback Hotspot"
+
+captive_portal:
+
+spi:
+  clk_pin: 18
+  miso_pin: 19
+
+sensor:
+  - platform: max6675
+    id: grill_temperature_sensor
+    name: "Grill Temperature"
+    cs_pin: 5
+    update_interval: 2s
+
+  - platform: ntc
+    sensor: meat_probe_1_analog
+    name: "Meat Probe 1"
+    calibration:
+      b_constant: 3950
+      reference_temperature: 25°C
+      reference_resistance: 10kOhm
+
+  - platform: resistance
+    id: meat_probe_1_analog
+    sensor: meat_probe_1_voltage
+    configuration: DOWNSTREAM
+    resistor: 10kOhm
+
+  - platform: adc
+    id: meat_probe_1_voltage
+    pin: 34
+    update_interval: 5s
+
+output:
+  - platform: slow_pwm
+    id: auger_pwm
+    pin: 14
+    period: 60s
+
+switch:
+  - platform: gpio
+    pin: 27
+    name: "Combustion Fan"
+    id: combustion_fan
+
+  - platform: gpio
+    pin: 26
+    name: "Igniter"
+    id: igniter
+
+climate:
+  - platform: pid
+    name: "Grill Controller"
+    sensor: grill_temperature_sensor
+    default_target_temperature: 225°F
+    heat_output: auger_pwm
+    control_parameters:
+      kp: 0.1
+      ki: 0.001
+      kd: 0.0
