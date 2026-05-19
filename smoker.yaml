@@ -32,6 +32,14 @@ spi:
   clk_pin: 18
   miso_pin: 19
 
+globals:
+  - id: cooldown_minutes
+    type: int
+    initial_value: '10'
+  - id: startup_auger_duty
+    type: float
+    initial_value: '0.6'
+
 sensor:
   - platform: max6675
     id: grill_temperature_sensor
@@ -92,25 +100,45 @@ button:
 
 script:
   - id: startup_sequence
-    mode: restart
+    mode: single
     then:
-      - logger.log: "Starting Smoker..."
-      - switch.turn_on: combustion_fan
-      - switch.turn_on: igniter
-      - output.set_level:
-          id: auger_pwm
-          level: 100%
-      - wait_until:
+      - if:
           condition:
             sensor.in_range:
               id: grill_temperature_sensor
               above: 130
-          timeout: 15min
-      - logger.log: "Startup complete, switching to PID control."
-      - switch.turn_off: igniter
-      - climate.control:
-          id: grill_controller
-          mode: HEAT
+          then:
+            - logger.log: "Grill is already hot. Switching directly to PID."
+            - climate.control:
+                id: grill_controller
+                mode: HEAT
+          else:
+            - logger.log: "Starting Smoker ignition sequence..."
+            - switch.turn_on: combustion_fan
+            - switch.turn_on: igniter
+            - output.set_level:
+                id: auger_pwm
+                level: !lambda 'return id(startup_auger_duty);'
+            - wait_until:
+                condition:
+                  sensor.in_range:
+                    id: grill_temperature_sensor
+                    above: 130
+                timeout: 15min
+            - if:
+                condition:
+                  sensor.in_range:
+                    id: grill_temperature_sensor
+                    above: 130
+                then:
+                  - logger.log: "Startup complete, switching to PID control."
+                  - switch.turn_off: igniter
+                  - climate.control:
+                      id: grill_controller
+                      mode: HEAT
+                else:
+                  - logger.log: "ERROR: Startup timed out — grill did not reach temperature. Aborting."
+                  - script.execute: shutdown_sequence
 
   - id: shutdown_sequence
     mode: restart
@@ -125,7 +153,7 @@ script:
           level: 0%
       - switch.turn_off: igniter
       - switch.turn_on: combustion_fan
-      - delay: 10min
+      - delay: !lambda 'return id(cooldown_minutes) * 60000;'
       - switch.turn_off: combustion_fan
       - logger.log: "Shutdown complete."
 
